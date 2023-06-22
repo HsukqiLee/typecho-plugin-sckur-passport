@@ -51,18 +51,33 @@ class SckurPassport_Action extends Typecho_Widget implements Widget_Interface_Do
             
         } else {
             // 用户不存在，注册并登录再跳转到后台
-            $username = $this->generateUsername($res['email']); // 生成用户名
-            $password = $this->generatePassword(); // 生成密码
-            $user = $this->registerUser($username, $res['email'], $password); // 注册用户
+            $username = base64_decode($res['nickname']); // 生成用户名
+            if (!$this->nameExists($username)) {
+                for ($i = 1; $i <= 999; $i++) {
+                    if ($this->nameExists($username . '_' . $i)) {
+                        $username = $username . $i;
+                        break;
+                    }
+                }
+            }
+            $hasher = new PasswordHash(8, true);
+            $dataStruct = array(
+                 'name' => $username,
+                 'mail' => $res['email'],
+                 'screenName' => $username,
+                 'password' => $hasher->HashPassword(Typecho_Common::randString(7)),
+                 'created' => time(),
+                 'group' => 'subscriber'
+            );
+            $insertId = Typecho_Widget::widget('Widget_Abstract_Users')->insert($dataStruct);
 
-            if ($user) {
-                // 注册成功，直接登录并跳转到后台
-                $this->setUserLogin($user['uid']);
-
-               
-            } else {
+            if ($insertId) {
+                $this->setUserLogin($insertId);
+            }
+            else {
                 // 注册失败，返回错误信息
-                $this->response->throwJson(array('status' => 'error', 'message' => 'Failed to register user'));
+                throw new Typecho_Exception('注册用户失败！');//参考错误码
+                exit();
             }
         }
         
@@ -87,6 +102,15 @@ class SckurPassport_Action extends Typecho_Widget implements Widget_Interface_Do
                         ->expression('logged', 'activated')
                         ->rows(array('authCode' => $authCode))
                         ->where('uid = ?', $uid));
+    }
+    
+    public function nameExists($name) {
+        $select = $this->db->select()
+                ->from('table.users')
+                ->where('name = ?', $name)
+                ->limit(1);
+        $user = $this->db->fetchRow($select);
+        return $user ? false : true;
     }
 
 }
